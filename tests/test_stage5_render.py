@@ -195,20 +195,37 @@ class TestRenderHtml:
         html = _render_html(plan, DesignSystem(), {}, logo.resolve().as_uri())
         assert "logo.png" in html
 
-    def test_two_photo_layout(self):
+    def test_two_landscape_photos_stacked(self):
         plan = PagePlan(pages=[
             Page(
                 page_number=1,
                 page_type="content",
                 layout_variant="2-photo",
                 photo_slots=[
-                    PhotoSlot(photo_id="p1", caption="A", display_size="half-width"),
-                    PhotoSlot(photo_id="p2", caption="B", display_size="half-width"),
+                    PhotoSlot(photo_id="p1", caption="A", display_size="full-width"),
+                    PhotoSlot(photo_id="p2", caption="B", display_size="full-width"),
                 ],
             )
         ])
         html = _render_html(plan, DesignSystem(), {}, None)
-        assert html.count('photo-cell photo-cell--half-width') == 2
+        assert html.count('photo-cell photo-cell--full-width') == 2
+        assert "photo-grid--stacked" in html
+
+    def test_two_portrait_photos_side_by_side(self):
+        plan = PagePlan(pages=[
+            Page(
+                page_number=1,
+                page_type="content",
+                layout_variant="2-photo",
+                photo_slots=[
+                    PhotoSlot(photo_id="p1", caption="A", display_size="portrait-pair"),
+                    PhotoSlot(photo_id="p2", caption="B", display_size="portrait-pair"),
+                ],
+            )
+        ])
+        html = _render_html(plan, DesignSystem(), {}, None)
+        assert html.count('photo-cell photo-cell--portrait-pair') == 2
+        assert 'photo-grid photo-grid--stacked' not in html
 
     def test_portrait_pair_css_class(self):
         plan = PagePlan(pages=[

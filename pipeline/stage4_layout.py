@@ -213,8 +213,10 @@ def _make_photo_slot(
     if batch_size == 1:
         display_size = "full-width" if orientation == "landscape" else "portrait-pair"
     else:
-        # Two photos per page — portrait pair stays portrait-pair, rest half-width
-        display_size = "portrait-pair" if orientation == "portrait" else "half-width"
+        # Two photos per page:
+        # Portrait → side by side (portrait-pair)
+        # Landscape/square → stack vertically (full-width); uses ~2× the vertical space
+        display_size = "portrait-pair" if orientation == "portrait" else "full-width"
 
     return PhotoSlot(photo_id=photo_id, caption=caption, display_size=display_size)
 

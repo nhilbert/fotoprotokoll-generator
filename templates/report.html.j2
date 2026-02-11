@@ -109,6 +109,20 @@
   .photo-grid--single-portrait {
     justify-content: center;
   }
+  /* Two landscape photos stacked vertically */
+  .photo-grid--stacked {
+    flex-direction: column;
+    gap: 4mm;
+  }
+  .photo-grid--stacked .photo-cell {
+    width: 100%;
+  }
+  .photo-grid--stacked .photo-img {
+    max-height: 110mm;
+    width: auto;
+    max-width: 100%;
+    margin: 0 auto;
+  }
 
   .photo-img {
     width: 100%;
@@ -189,7 +203,8 @@
     {# heading already rendered above, nothing more to add #}
   {% else %}
   {% set is_single_portrait = (p.photo_slots | length == 1 and p.photo_slots[0].display_size == "portrait-pair") %}
-  <div class="photo-grid{% if is_single_portrait %} photo-grid--single-portrait{% endif %}">
+  {% set is_stacked = (p.photo_slots | length > 1 and p.photo_slots[0].display_size == "full-width") %}
+  <div class="photo-grid{% if is_single_portrait %} photo-grid--single-portrait{% elif is_stacked %} photo-grid--stacked{% endif %}">
     {% for slot in p.photo_slots %}
     {% set src = photo_srcs.get(slot.photo_id, "") %}
     <div class="photo-cell photo-cell--{{ slot.display_size }}">
