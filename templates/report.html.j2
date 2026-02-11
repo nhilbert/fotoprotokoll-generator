@@ -16,7 +16,7 @@
   }
 
   body {
-    font-family: {{ ds.typography.body.font }}, "Liberation Sans", Arial, Helvetica, sans-serif;
+    font-family: "{{ ds.typography.body.font }}", Arial, sans-serif;
     font-size: {{ ds.typography.body.size_pt }}pt;
     color: {{ ds.colors.text }};
   }
@@ -117,11 +117,14 @@
   .photo-grid--stacked .photo-cell {
     width: 100%;
   }
+  .photo-grid--stacked .photo-cell {
+    flex: 1;
+  }
   .photo-grid--stacked .photo-img {
-    max-height: 110mm;
-    width: auto;
-    max-width: 100%;
-    margin: 0 auto;
+    width: 100%;
+    height: auto;
+    max-height: {{ (ds.page.content_height_mm / 2.2) | round(1) }}mm;
+    object-fit: contain;
   }
 
   .photo-img {
@@ -203,11 +206,11 @@
     {# heading already rendered above, nothing more to add #}
   {% else %}
   {% set is_single_portrait = (p.photo_slots | length == 1 and p.photo_slots[0].display_size == "portrait-pair") %}
-  {% set is_stacked = (p.photo_slots | length > 1 and p.photo_slots[0].display_size == "full-width") %}
+  {% set is_stacked = (p.photo_slots | length > 1) and (p.photo_slots | selectattr("display_size", "equalto", "full-width") | list | length > 0) %}
   <div class="photo-grid{% if is_single_portrait %} photo-grid--single-portrait{% elif is_stacked %} photo-grid--stacked{% endif %}">
     {% for slot in p.photo_slots %}
     {% set src = photo_srcs.get(slot.photo_id, "") %}
-    <div class="photo-cell photo-cell--{{ slot.display_size }}">
+    <div class="photo-cell photo-cell--{{ 'full-width' if is_stacked else slot.display_size }}">
       {% if src %}
       <img class="photo-img" src="{{ src }}" alt="{{ slot.caption }}">
       {% endif %}
