@@ -48,9 +48,14 @@ Extrahiere aus dem folgenden Dokument:
 - Datum (im Format YYYY-MM-DD, falls erkennbar)
 - Ort (falls angegeben)
 - Anzahl der Teilnehmer (falls angegeben)
-- Tagesordnungspunkte / Programmpunkte mit Uhrzeiten (HH:MM), falls vorhanden
+- Inhaltliche Programmpunkte (Sessions) mit Uhrzeiten (HH:MM), falls vorhanden
 
-Sind keine Uhrzeiten angegeben, liefere eine einzelne Session mit dem Workshop-Titel als Namen.
+Die Agenda kann als Tabelle vorliegen (Spalten: Zeit | Thema/Methode | Wer).
+Extrahiere nur inhaltlich relevante Sessions — also Arbeitsphasen, Inputs, Check-Ins und ähnliche
+aktive Programmpunkte. Überspringe reine Pausen, An-/Abreise und organisatorische Einträge
+(z.B. „Pause", „Mittagspause", „Ende", „Offener Anfang" ohne Inhalt, „Orga").
+Verwende als Session-Name die erste Zeile des Thema-Felds (vor dem ersten Zeilenumbruch).
+Sind keine Uhrzeiten erkennbar, liefere eine einzelne Session mit dem Workshop-Titel als Namen.
 Antworte ausschließlich im vorgegebenen JSON-Schema.
 """
 
@@ -255,7 +260,27 @@ def _read_text(path: Path) -> str:
 def _read_docx(path: Path) -> str:
     from docx import Document
     doc = Document(path)
-    return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+    parts: list[str] = []
+
+    # Body paragraphs
+    for p in doc.paragraphs:
+        if p.text.strip():
+            parts.append(p.text)
+
+    # Tables — common in structured agendas (time | topic | who)
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells]
+            # Deduplicate adjacent merged cells (docx repeats the value)
+            seen: list[str] = []
+            for cell in cells:
+                if not seen or cell != seen[-1]:
+                    seen.append(cell)
+            line = " | ".join(c for c in seen if c)
+            if line:
+                parts.append(line)
+
+    return "\n".join(parts)
 
 
 def _read_pdf(path: Path) -> str:

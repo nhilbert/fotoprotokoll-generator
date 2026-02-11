@@ -29,6 +29,7 @@ class PageDimensions(BaseModel):
 class ColorPalette(BaseModel):
     primary: str = "#1A3A5C"
     secondary: str = "#F4F7FA"
+    accent: str = "#00897B"   # teal — used for cover outline and separators
     text: str = "#1A1A1A"
     caption: str = "#666666"
 

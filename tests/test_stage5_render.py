@@ -9,7 +9,7 @@ from models.design import DesignSystem
 from models.enriched_photos import EnrichedPhoto, EnrichedPhotoSet
 from models.manifest import ProjectManifest, WorkshopMeta
 from models.page_plan import Page, PagePlan, PhotoSlot, TextBlock
-from pipeline.stage5_render import _output_path, _render_html, _resolve_photo_path, _slugify, run
+from pipeline.stage5_render import _output_path, _render_html, _resolve_photo_path, _slugify, _validate_pdf_fonts, run
 from settings import Settings
 
 
@@ -153,7 +153,8 @@ class TestRenderHtml:
         assert "processed.jpg" in html
         assert '<img class="photo-img"' in html
 
-    def test_caption_in_output(self, tmp_path):
+    def test_caption_in_alt_attribute(self, tmp_path):
+        # Captions are not shown as visible text but still present as alt text
         img_path = tmp_path / "photo.jpg"
         img_path.write_bytes(b"FAKEJPEG")
         plan = PagePlan(pages=[
@@ -167,7 +168,9 @@ class TestRenderHtml:
             )
         ])
         html = _render_html(plan, DesignSystem(), {"p1": img_path.resolve().as_uri()}, None)
-        assert "Moderationskarten" in html
+        assert 'alt="Moderationskarten"' in html
+        # Caption not rendered as a separate visible div
+        assert '<div class="photo-caption">' not in html
 
     def test_section_divider_rendered(self):
         plan = PagePlan(pages=[
@@ -181,6 +184,32 @@ class TestRenderHtml:
         html = _render_html(plan, DesignSystem(), {}, None)
         assert "Morgen-Block" in html
         assert "section-divider" in html
+
+    def test_page_heading_shown_in_header(self):
+        plan = PagePlan(pages=[
+            Page(
+                page_number=2,
+                page_type="content",
+                layout_variant="text-only",
+                page_heading="Ideensammlung",
+                text_blocks=[TextBlock(content="Ideensammlung", role="heading", style_ref="heading")],
+            )
+        ])
+        html = _render_html(plan, DesignSystem(), {}, None)
+        assert "Ideensammlung" in html
+        assert "page-header-title" in html
+
+    def test_page_heading_shown_on_all_content_pages(self):
+        plan = PagePlan(pages=[
+            Page(page_number=2, page_type="content", layout_variant="1-photo",
+                 page_heading="Arbeiten im Team",
+                 photo_slots=[PhotoSlot(photo_id="p1", caption="", display_size="full-width")]),
+            Page(page_number=3, page_type="content", layout_variant="1-photo",
+                 page_heading="Arbeiten im Team",
+                 photo_slots=[PhotoSlot(photo_id="p2", caption="", display_size="full-width")]),
+        ])
+        html = _render_html(plan, DesignSystem(), {}, None)
+        assert html.count("Arbeiten im Team") == 2
 
     def test_no_logo_when_none(self):
         plan = _cover_plan()
@@ -429,3 +458,76 @@ class TestRun:
         with _mock_weasyprint():
             result = run(s, _cover_plan(), _empty_photo_set(), _manifest())
         assert result.parent.exists()
+
+
+# ---------------------------------------------------------------------------
+# _validate_pdf_fonts
+# ---------------------------------------------------------------------------
+
+def _make_minimal_pdf(tmp_path: Path, with_fonts: bool) -> Path:
+    """Create a minimal PDF file for validation tests."""
+    import zlib
+
+    if with_fonts:
+        # Build an ObjStm containing a FontDescriptor with /FontFile2
+        objstm_content = (
+            b"1 0\n"
+            b"<</Type /FontDescriptor/FontName /ABCDEF+DejaVu-Sans"
+            b"/FontFile2 99 0 R>>\n"
+        )
+        compressed = zlib.compress(objstm_content)
+        objstm = (
+            b"1 0 obj\n"
+            b"<</Type /ObjStm/N 1/First 4/Filter /FlateDecode"
+            b"/Length " + str(len(compressed)).encode() + b">>\n"
+            b"stream\n" + compressed + b"\nendstream\nendobj\n"
+        )
+        body = objstm
+    else:
+        body = b"1 0 obj\n<</Type /Catalog>>\nendobj\n"
+
+    pdf = (
+        b"%PDF-1.7\n"
+        + body
+        + b"xref\n0 2\n0000000000 65535 f \n0000000009 00000 n \n"
+        b"trailer\n<</Size 2/Root 1 0 R>>\nstartxref\n"
+        + str(len(b"%PDF-1.7\n") + len(body)).encode()
+        + b"\n%%EOF\n"
+    )
+    path = tmp_path / "test.pdf"
+    path.write_bytes(pdf)
+    return path
+
+
+class TestValidatePdfFonts:
+    def test_warns_when_no_fonts_embedded(self, tmp_path, caplog):
+        import logging
+        pdf = _make_minimal_pdf(tmp_path, with_fonts=False)
+        with caplog.at_level(logging.WARNING, logger="pipeline.stage5_render"):
+            _validate_pdf_fonts(pdf, "DejaVu Sans")
+        assert any("FAILED" in r.message for r in caplog.records)
+
+    def test_ok_when_fonts_embedded(self, tmp_path, caplog):
+        import logging
+        pdf = _make_minimal_pdf(tmp_path, with_fonts=True)
+        with caplog.at_level(logging.INFO, logger="pipeline.stage5_render"):
+            _validate_pdf_fonts(pdf, "DejaVu Sans")
+        assert not any("FAILED" in r.message for r in caplog.records)
+        assert any("OK" in r.message for r in caplog.records)
+
+    def test_subset_name_detected(self, tmp_path, caplog):
+        import logging
+        pdf = _make_minimal_pdf(tmp_path, with_fonts=True)
+        with caplog.at_level(logging.INFO, logger="pipeline.stage5_render"):
+            _validate_pdf_fonts(pdf, "DejaVu Sans")
+        ok_records = [r for r in caplog.records if "OK" in r.message]
+        assert ok_records
+        assert "ABCDEF+DejaVu-Sans" in ok_records[0].message
+
+    def test_run_calls_validation(self, tmp_path):
+        s = _settings(tmp_path)
+        with _mock_weasyprint(), patch(
+            "pipeline.stage5_render._validate_pdf_fonts"
+        ) as mock_validate:
+            result = run(s, _cover_plan(), _empty_photo_set(), _manifest())
+        mock_validate.assert_called_once_with(result, "DejaVu Sans")

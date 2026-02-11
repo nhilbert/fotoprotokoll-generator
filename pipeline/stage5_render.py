@@ -11,9 +11,12 @@ is absent the original photo in ``fotos/`` is used as a fallback.
 """
 import logging
 import re
+import zlib
 from pathlib import Path
 
+import markdown as _markdown_lib
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from markupsafe import Markup
 
 try:
     import weasyprint as _weasyprint  # requires native GTK/Pango libs at runtime
@@ -70,6 +73,7 @@ def run(
         base_url=str(settings.project_dir.resolve()),
     ).write_pdf(str(output_path), stylesheets=[font_css], font_config=font_config)
 
+    _validate_pdf_fonts(output_path, design.typography.body.font)
     logger.info("Stage 5 complete → %s", output_path)
     return output_path
 
@@ -90,6 +94,9 @@ def _render_html(
     env = Environment(
         loader=FileSystemLoader(str(_TEMPLATE_DIR)),
         autoescape=select_autoescape(["html"]),
+    )
+    env.filters["markdown"] = lambda text: Markup(
+        _markdown_lib.markdown(text, extensions=["extra"])
     )
     template = env.get_template("report.html.j2")
     return template.render(
@@ -180,6 +187,62 @@ def _build_font_face_css(font_name: str) -> str:
         )
     logger.debug("Font-face rules for '%s': %d variants", font_name, len(rules))
     return "\n".join(rules)
+
+
+# ---------------------------------------------------------------------------
+# PDF font validation
+# ---------------------------------------------------------------------------
+
+def _validate_pdf_fonts(pdf_path: Path, expected_font: str) -> None:
+    """Check that fonts are embedded in the generated PDF and log the result.
+
+    Parses the raw PDF bytes looking for:
+    - ``/FontFile2`` (TrueType font programs) in object-stream dictionaries
+    - Subset font names with the standard ``ABCDEF+FontName`` prefix
+
+    A warning is logged if no embedded font programs are found so the caller
+    can catch misconfiguration early without aborting the run.
+    """
+    data = pdf_path.read_bytes()
+
+    # Decompress all FlateDecode streams so we can inspect object dictionaries
+    # that WeasyPrint packs into cross-reference object streams (ObjStm).
+    all_decoded: list[bytes] = [data]  # also search raw (uncompressed objects)
+    for m in re.finditer(rb"stream[\r\n]+(.*?)[\r\n]+endstream", data, re.DOTALL):
+        try:
+            all_decoded.append(zlib.decompress(m.group(1)))
+        except Exception:
+            pass
+
+    combined = b"\n".join(all_decoded)
+
+    # Count /FontFile2 or /FontFile3 references (TrueType / OpenType programs)
+    font_file_refs = len(re.findall(rb"/FontFile[23]?\b", combined))
+
+    # Collect subset font names (standard PDF format: ABCDEF+FontName)
+    subset_names = [
+        n.decode("latin-1")
+        for n in re.findall(rb"/FontName\s+/([A-Z]{6}\+[^\s/\]>]+)", combined)
+    ]
+
+    if font_file_refs == 0 and not subset_names:
+        logger.warning(
+            "PDF font validation FAILED for %s — "
+            "no embedded font programs found. "
+            "Text may be unreadable on systems without '%s' installed. "
+            "Check that font files for '%s' are present in a standard font directory.",
+            pdf_path.name,
+            expected_font,
+            expected_font,
+        )
+    else:
+        logger.info(
+            "PDF font validation OK for %s — "
+            "%d font program(s) embedded, subsets: %s",
+            pdf_path.name,
+            font_file_refs,
+            subset_names if subset_names else ["(none detected — may be in raw stream)"],
+        )
 
 
 # ---------------------------------------------------------------------------

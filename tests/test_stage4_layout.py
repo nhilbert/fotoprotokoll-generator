@@ -170,23 +170,27 @@ class TestPageNumbering:
 class TestSectionDividers:
     def test_section_divider_inserted_when_enabled(self, tmp_path):
         s = _settings(tmp_path, section_dividers=True)
-        item = _item(heading="Morgen-Block")
-        plan = run(s, _manifest(), _plan([item]), _photo_set([]))
+        item = _item(heading="Morgen-Block", photo_ids=["photo_001"])
+        plan = run(s, _manifest(), _plan([item]), _photo_set([_enriched("photo_001")]))
         dividers = [p for p in plan.pages if p.page_type == "section_divider"]
         assert len(dividers) == 1
         assert dividers[0].text_blocks[0].content == "Morgen-Block"
 
     def test_no_section_divider_when_disabled(self, tmp_path):
         s = _settings(tmp_path, section_dividers=False)
-        item = _item(heading="Morgen-Block")
-        plan = run(s, _manifest(), _plan([item]), _photo_set([]))
+        item = _item(heading="Morgen-Block", photo_ids=["photo_001"])
+        plan = run(s, _manifest(), _plan([item]), _photo_set([_enriched("photo_001")]))
         dividers = [p for p in plan.pages if p.page_type == "section_divider"]
         assert len(dividers) == 0
 
     def test_multiple_items_each_get_divider(self, tmp_path):
         s = _settings(tmp_path, section_dividers=True)
-        items = [_item("item_001", heading="Block A"), _item("item_002", "session_002", "Block B")]
-        plan = run(s, _manifest(), _plan(items), _photo_set([]))
+        items = [
+            _item("item_001", heading="Block A", photo_ids=["photo_001"]),
+            _item("item_002", "session_002", "Block B", photo_ids=["photo_002"]),
+        ]
+        enriched = [_enriched("photo_001"), _enriched("photo_002")]
+        plan = run(s, _manifest(), _plan(items), _photo_set(enriched))
         dividers = [p for p in plan.pages if p.page_type == "section_divider"]
         assert len(dividers) == 2
 
@@ -232,13 +236,13 @@ class TestContentPages:
         content = [p for p in plan.pages if p.page_type == "content"]
         assert len(content) == 2
 
-    def test_no_photos_produces_text_only_page(self, tmp_path):
+    def test_empty_item_produces_no_pages(self, tmp_path):
+        # Items with no photos and no text snippet are skipped entirely
         s = _settings(tmp_path)
         item = _item(photo_ids=[])
         plan = run(s, _manifest(), _plan([item]), _photo_set([]))
         content = [p for p in plan.pages if p.page_type == "content"]
-        assert len(content) == 1
-        assert content[0].layout_variant == "text-only"
+        assert len(content) == 0
 
     def test_heading_appears_on_first_content_page_only(self, tmp_path):
         s = _settings(tmp_path, max_photos_per_page=1)
@@ -252,6 +256,29 @@ class TestContentPages:
         assert len(first_headings) == 1
         assert first_headings[0].content == "Ergebnisse"
         assert len(second_headings) == 0
+
+    def test_page_heading_set_on_all_content_pages(self, tmp_path):
+        s = _settings(tmp_path, max_photos_per_page=1)
+        photos = ["photo_001", "photo_002", "photo_003"]
+        item = _item(heading="Ideensammlung", photo_ids=photos)
+        enriched = [_enriched(pid) for pid in photos]
+        plan = run(s, _manifest(), _plan([item]), _photo_set(enriched))
+        content = [p for p in plan.pages if p.page_type == "content"]
+        assert all(p.page_heading == "Ideensammlung" for p in content)
+
+    def test_page_heading_set_on_section_divider(self, tmp_path):
+        s = _settings(tmp_path, section_dividers=True)
+        item = _item(heading="Morgen-Block", photo_ids=["photo_001"])
+        plan = run(s, _manifest(), _plan([item]), _photo_set([_enriched("photo_001")]))
+        dividers = [p for p in plan.pages if p.page_type == "section_divider"]
+        assert dividers[0].page_heading == "Morgen-Block"
+
+    def test_cover_has_no_page_heading(self, tmp_path):
+        s = _settings(tmp_path)
+        plan = run(s, _manifest(), _plan([_item()]), _photo_set([]))
+        cover = plan.pages[0]
+        assert cover.page_type == "cover"
+        assert cover.page_heading is None
 
 
 # ---------------------------------------------------------------------------

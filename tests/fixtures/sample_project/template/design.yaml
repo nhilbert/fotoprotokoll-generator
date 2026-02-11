@@ -9,6 +9,7 @@ page:
 colors:
   primary: "#1A3A5C"
   secondary: "#F4F7FA"
+  accent: "#00897B"
   text: "#1A1A1A"
   caption: "#666666"
 

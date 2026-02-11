@@ -33,41 +33,80 @@
 
   /* ── Cover ── */
   .page--cover {
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    background-color: {{ ds.colors.primary }};
-    color: #ffffff;
+    background-color: #ffffff;
+    color: {{ ds.colors.text }};
     padding: 10mm;
+    justify-content: flex-start;
+    border: 2mm solid {{ ds.colors.accent }};
+  }
+  .cover-top {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+    min-height: 20mm;
   }
   .cover-logo {
-    max-height: 25mm;
-    max-width: 60mm;
-    margin-bottom: 8mm;
+    max-height: 22mm;
+    max-width: 55mm;
+  }
+  .cover-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 8mm 0;
+  }
+  .cover-eyebrow {
+    font-size: {{ ds.typography.caption.size_pt }}pt;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: {{ ds.colors.accent }};
+    margin-bottom: 4mm;
   }
   .cover-title {
-    font-size: {{ ds.typography.heading.size_pt }}pt;
+    font-size: {{ (ds.typography.heading.size_pt * 1.6) | round(1) }}pt;
     font-weight: bold;
+    color: {{ ds.colors.primary }};
+    line-height: 1.15;
     margin-bottom: 4mm;
-    line-height: 1.2;
+  }
+  .cover-subtitle {
+    font-size: {{ (ds.typography.body.size_pt * 1.2) | round(1) }}pt;
+    color: {{ ds.colors.text }};
+    line-height: 1.5;
+    margin-bottom: 3mm;
   }
   .cover-meta {
     font-size: {{ ds.typography.body.size_pt }}pt;
-    opacity: 0.85;
-    margin-top: 2mm;
+    color: {{ ds.colors.caption }};
+    margin-top: 1.5mm;
   }
 
   /* ── Section divider ── */
   .page--section-divider {
+    justify-content: flex-start;
+  }
+  .section-divider-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     justify-content: center;
-    align-items: flex-start;
-    padding: 8mm 0;
-    border-top: 1.5mm solid {{ ds.colors.primary }};
+  }
+  .section-divider-label {
+    font-size: {{ ds.typography.caption.size_pt }}pt;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: {{ ds.colors.caption }};
+    margin-bottom: 3mm;
   }
   .section-divider-title {
-    font-size: {{ ds.typography.heading.size_pt }}pt;
+    font-size: {{ (ds.typography.heading.size_pt * 1.8) | round(1) }}pt;
     font-weight: bold;
     color: {{ ds.colors.primary }};
+    line-height: 1.15;
+    border-left: 2mm solid {{ ds.colors.accent }};
+    padding-left: 5mm;
   }
 
   /* ── Content page ── */
@@ -133,17 +172,56 @@
     display: block;
     object-fit: contain;
   }
+  .photo-subtitle {
+    font-size: {{ ds.typography.caption.size_pt }}pt;
+    font-weight: bold;
+    color: {{ ds.colors.primary }};
+    margin-top: 1.5mm;
+    letter-spacing: 0.02em;
+  }
   .photo-caption {
     font-size: {{ ds.typography.caption.size_pt }}pt;
     color: {{ ds.colors.caption }};
     line-height: 1.3;
   }
 
-  /* ── Text-only content ── */
+  /* ── Text-only / appendix content ── */
   .text-only-body {
     font-size: {{ ds.typography.body.size_pt }}pt;
     color: {{ ds.colors.text }};
-    line-height: 1.5;
+    line-height: 1.6;
+    flex: 1;
+  }
+  /* Markdown elements inside text blocks */
+  .text-only-body h2 {
+    font-size: {{ (ds.typography.body.size_pt * 1.3) | round(1) }}pt;
+    font-weight: bold;
+    color: {{ ds.colors.primary }};
+    margin-top: 4mm;
+    margin-bottom: 1.5mm;
+  }
+  .text-only-body h3 {
+    font-size: {{ ds.typography.body.size_pt }}pt;
+    font-weight: bold;
+    margin-top: 3mm;
+    margin-bottom: 1mm;
+  }
+  .text-only-body ul, .text-only-body ol {
+    padding-left: 5mm;
+    margin-bottom: 2mm;
+  }
+  .text-only-body li {
+    margin-bottom: 0.5mm;
+  }
+  .text-only-body p {
+    margin-bottom: 2mm;
+  }
+  .text-only-body strong { font-weight: bold; }
+  .text-only-body em { font-style: italic; }
+  .text-only-body hr {
+    border: none;
+    border-top: 0.2mm solid {{ ds.colors.accent }};
+    margin: 3mm 0;
   }
 
   /* ── Running header (non-cover pages) ── */
@@ -153,12 +231,12 @@
     justify-content: space-between;
     padding-bottom: 2mm;
     margin-bottom: 3mm;
-    border-bottom: 0.3mm solid {{ ds.colors.primary }};
+    border-bottom: 0.3mm solid {{ ds.colors.accent }};
     flex-shrink: 0;
   }
   .page-header-title {
     font-size: {{ ds.typography.caption.size_pt }}pt;
-    color: {{ ds.colors.primary }};
+    color: {{ ds.colors.accent }};
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 0.03em;
@@ -175,7 +253,7 @@
     justify-content: space-between;
     margin-top: auto;
     padding-top: 2mm;
-    border-top: 0.3mm solid {{ ds.colors.secondary }};
+    border-top: 0.3mm solid {{ ds.colors.accent }};
     flex-shrink: 0;
     height: 8mm;
   }
@@ -187,13 +265,6 @@
     max-height: 7mm;
     max-width: 35mm;
   }
-  /* Cover footer: white text on dark background */
-  .page--cover .page-footer {
-    border-top-color: rgba(255,255,255,0.3);
-  }
-  .page--cover .page-footer-number {
-    color: rgba(255,255,255,0.7);
-  }
 </style>
 </head>
 <body>
@@ -204,21 +275,28 @@
 {# ── COVER ── #}
 {% if p.page_type == "cover" %}
 <div class="page page--cover">
-  {% if logo_src %}
-  <img class="cover-logo" src="{{ logo_src }}" alt="Logo">
-  {% elif footer_logo_src %}
-  <img class="cover-logo" src="{{ footer_logo_src }}" alt="Logo">
-  {% endif %}
-  {% for block in p.text_blocks %}
-    {% if block.role == "heading" %}
-    <div class="cover-title">{{ block.content }}</div>
-    {% else %}
-    <div class="cover-meta">{{ block.content }}</div>
+  {# Top bar: logo right-aligned #}
+  <div class="cover-top">
+    {% if logo_src %}
+    <img class="cover-logo" src="{{ logo_src }}" alt="Logo">
+    {% elif footer_logo_src %}
+    <img class="cover-logo" src="{{ footer_logo_src }}" alt="Logo">
     {% endif %}
-  {% endfor %}
-  <div class="page-footer">
-    <span class="page-footer-number">{{ p.page_number }}</span>
-    {% if footer_logo_src %}<img class="page-footer-logo" src="{{ footer_logo_src }}" alt="Logo">{% endif %}
+  </div>
+  {# Main body: title + meta vertically centered #}
+  <div class="cover-body">
+    <div class="cover-eyebrow">Fotoprotokoll</div>
+    {% set ns = namespace(subtitle_shown=false) %}
+    {% for block in p.text_blocks %}
+      {% if block.role == "heading" %}
+      <div class="cover-title">{{ block.content }}</div>
+      {% elif not ns.subtitle_shown %}
+      <div class="cover-subtitle">{{ block.content }}</div>
+      {% set ns.subtitle_shown = true %}
+      {% else %}
+      <div class="cover-meta">{{ block.content }}</div>
+      {% endif %}
+    {% endfor %}
   </div>
 </div>
 
@@ -226,11 +304,15 @@
 {% elif p.page_type == "section_divider" %}
 <div class="page page--section-divider">
   <div class="page-header">
-    <span class="page-header-title">{{ workshop_title }}</span>
+    {% if p.page_heading %}<span class="page-header-title">{{ p.page_heading }}</span>{% endif %}
   </div>
-  {% for block in p.text_blocks %}
-  <div class="section-divider-title">{{ block.content }}</div>
-  {% endfor %}
+  {# Large title vertically centered in remaining space #}
+  <div class="section-divider-body">
+    <div class="section-divider-label">Abschnitt</div>
+    {% for block in p.text_blocks %}
+    <div class="section-divider-title">{{ block.content }}</div>
+    {% endfor %}
+  </div>
   <div class="page-footer">
     <span class="page-footer-number">{{ p.page_number }}</span>
     {% if footer_logo_src %}<img class="page-footer-logo" src="{{ footer_logo_src }}" alt="Logo">{% endif %}
@@ -240,16 +322,14 @@
 {# ── CONTENT ── #}
 {% elif p.page_type == "content" %}
 <div class="page page--content">
-  {%- set section_title = p.text_blocks | selectattr("role", "equalto", "heading") | map(attribute="content") | first | default("") %}
   <div class="page-header">
-    <span class="page-header-title">{{ workshop_title }}</span>
-    {% if section_title %}<span class="page-header-section">{{ section_title }}</span>{% endif %}
+    {% if p.page_heading %}<span class="page-header-title">{{ p.page_heading }}</span>{% endif %}
   </div>
   {% for block in p.text_blocks %}
     {% if block.role == "heading" %}
     <div class="content-heading">{{ block.content }}</div>
     {% else %}
-    <div class="text-only-body">{{ block.content }}</div>
+    <div class="text-only-body">{{ block.content | markdown }}</div>
     {% endif %}
   {% endfor %}
 
@@ -265,8 +345,8 @@
       {% if src %}
       <img class="photo-img" src="{{ src }}" alt="{{ slot.caption }}">
       {% endif %}
-      {% if slot.caption %}
-      <div class="photo-caption">{{ slot.caption }}</div>
+      {% if slot.subtitle %}
+      <div class="photo-subtitle">{{ slot.subtitle }}</div>
       {% endif %}
     </div>
     {% endfor %}

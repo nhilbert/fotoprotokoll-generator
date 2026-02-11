@@ -24,9 +24,12 @@ from datetime import date
 
 from models.content_plan import ContentItem, ContentPlan
 from models.enriched_photos import EnrichedPhoto, EnrichedPhotoSet
-from models.manifest import Photo, ProjectManifest
+from models.manifest import Photo, ProjectManifest, TextSnippet
 from models.page_plan import Page, PagePlan, PhotoSlot, TextBlock
 from settings import Settings
+
+# Approximate words per text-only page (body font ~10pt, A4 with margins)
+_WORDS_PER_TEXT_PAGE = 400
 
 # German month names — avoids locale dependency and %-d Linux-only format
 _DE_MONTHS = [
@@ -55,6 +58,8 @@ def run(
     enriched_map = {e.photo_id: e for e in photo_set.enriched_photos}
     # Orientation from manifest (computed from EXIF in Stage 1, always authoritative)
     orientation_map = {p.id: p.orientation for p in manifest.photos}
+    snippet_map: dict[str, TextSnippet] = {s.id: s for s in manifest.text_snippets}
+    placed_snippet_ids: set[str] = set()
     pages: list[Page] = []
     page_number = 1
 
@@ -65,6 +70,14 @@ def run(
 
     # --- Content pages (one block per ContentItem) ---
     for item in content_plan.items:
+        has_photos = bool(item.photo_ids)
+        has_text = bool(item.text_snippet_ref and item.text_snippet_ref in snippet_map)
+
+        # Skip items with nothing to show
+        if not has_photos and not has_text:
+            logger.debug("Skipping empty item %s (%s)", item.id, item.heading)
+            continue
+
         if settings.section_dividers:
             pages.append(_make_section_divider(page_number, item))
             page_number += 1
@@ -78,6 +91,25 @@ def run(
         )
         pages.extend(content_pages)
         page_number += len(content_pages)
+
+        # --- Text pages for matched snippet (inline after photos only) ---
+        # A snippet without accompanying photos goes to the Anhang instead.
+        if has_text and has_photos:
+            snippet = snippet_map[item.text_snippet_ref]  # type: ignore[index]
+            text_pages = _make_text_pages(page_number, snippet, heading=item.heading)
+            pages.extend(text_pages)
+            page_number += len(text_pages)
+            placed_snippet_ids.add(item.text_snippet_ref)  # type: ignore[arg-type]
+
+    # --- Anhang: unmatched text snippets at the end ---
+    unplaced = [s for s in manifest.text_snippets if s.id not in placed_snippet_ids]
+    if unplaced:
+        pages.append(_make_section_divider_titled(page_number, "Anhang"))
+        page_number += 1
+        for snippet in unplaced:
+            text_pages = _make_text_pages(page_number, snippet, heading="Anhang")
+            pages.extend(text_pages)
+            page_number += len(text_pages)
 
     plan = PagePlan(pages=pages)
 
@@ -128,8 +160,22 @@ def _make_section_divider(page_number: int, item: ContentItem) -> Page:
         page_type="section_divider",
         layout_variant="text-only",
         content_item_ref=item.id,
+        page_heading=item.heading,
         text_blocks=[
             TextBlock(content=item.heading, role="heading", style_ref="heading"),
+        ],
+    )
+
+
+def _make_section_divider_titled(page_number: int, title: str) -> Page:
+    """Create a standalone section divider with an explicit title (e.g. 'Anhang')."""
+    return Page(
+        page_number=page_number,
+        page_type="section_divider",
+        layout_variant="text-only",
+        page_heading=title,
+        text_blocks=[
+            TextBlock(content=title, role="heading", style_ref="heading"),
         ],
     )
 
@@ -155,16 +201,7 @@ def _make_content_pages(
     page_number = start_page
 
     if not photo_ids:
-        # No photos — emit a text-only page with the heading
-        pages.append(Page(
-            page_number=page_number,
-            page_type="content",
-            layout_variant="text-only",
-            content_item_ref=item.id,
-            text_blocks=[
-                TextBlock(content=item.heading, role="heading", style_ref="heading"),
-            ],
-        ))
+        # No photos — caller is responsible for skipping or adding text pages separately
         return pages
 
     # Batch photos into groups of max_per_page
@@ -192,10 +229,73 @@ def _make_content_pages(
             page_type="content",
             layout_variant=variant,
             content_item_ref=item.id,
+            page_heading=item.heading,
             photo_slots=slots,
             text_blocks=text_blocks,
         ))
         page_number += 1
+
+    return pages
+
+
+# ---------------------------------------------------------------------------
+# Text pages (from data/text/ snippets)
+# ---------------------------------------------------------------------------
+
+def _make_text_pages(
+    start_page: int,
+    snippet: TextSnippet,
+    heading: str | None,
+) -> list[Page]:
+    """Paginate a TextSnippet into one or more text-only content pages.
+
+    Splits on top-level markdown ``##`` section headings so that each page
+    starts at a clean section boundary and never exceeds ``_WORDS_PER_TEXT_PAGE``
+    words.  Preserves markdown structure so the template can render it properly.
+    The ``heading`` (when provided) is shown as the page_heading in the header.
+    """
+    import re as _re
+
+    pages: list[Page] = []
+    content = snippet.content
+
+    # Strip YAML front-matter (--- ... ---)
+    content = _re.sub(r'^---\s*\n.*?\n---\s*\n', '', content, flags=_re.DOTALL)
+    content = content.strip()
+
+    # Split on ## headings (preserve the heading line as start of each chunk)
+    raw_sections = _re.split(r'(?=^## )', content, flags=_re.MULTILINE)
+    raw_sections = [s.strip() for s in raw_sections if s.strip()]
+
+    # Group sections into page-sized chunks
+    chunks: list[str] = []
+    current_parts: list[str] = []
+    current_words = 0
+
+    for section in raw_sections:
+        section_words = len(section.split())
+        if current_parts and current_words + section_words > _WORDS_PER_TEXT_PAGE:
+            chunks.append("\n\n".join(current_parts))
+            current_parts = [section]
+            current_words = section_words
+        else:
+            current_parts.append(section)
+            current_words += section_words
+
+    if current_parts:
+        chunks.append("\n\n".join(current_parts))
+
+    if not chunks:
+        chunks = [""]
+
+    for chunk_index, chunk in enumerate(chunks):
+        pages.append(Page(
+            page_number=start_page + chunk_index,
+            page_type="content",
+            layout_variant="text-only",
+            page_heading=heading,
+            text_blocks=[TextBlock(content=chunk, role="body", style_ref="body")],
+        ))
 
     return pages
 
@@ -208,6 +308,10 @@ def _make_photo_slot(
 ) -> PhotoSlot:
     enriched = enriched_map.get(photo_id)
     caption = enriched.description if enriched else ""
+    # Use first two topic keywords as a short subtitle (1–3 words)
+    subtitle = ""
+    if enriched and enriched.topic_keywords:
+        subtitle = ", ".join(enriched.topic_keywords[:2])
     orientation = _photo_orientation(photo_id, enriched_map, orientation_map)
 
     if batch_size == 1:
@@ -218,7 +322,7 @@ def _make_photo_slot(
         # Landscape/square → stack vertically (full-width); uses ~2× the vertical space
         display_size = "portrait-pair" if orientation == "portrait" else "full-width"
 
-    return PhotoSlot(photo_id=photo_id, caption=caption, display_size=display_size)
+    return PhotoSlot(photo_id=photo_id, caption=caption, display_size=display_size, subtitle=subtitle)
 
 
 def _photo_orientation(
