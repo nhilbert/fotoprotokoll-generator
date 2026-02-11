@@ -48,8 +48,9 @@ def run(
 
     photo_srcs = _build_photo_srcs(photo_set, manifest, settings)
     logo_src = _resolve_logo(design, settings)
+    footer_logo_src = _find_assets_logo(settings) or logo_src
 
-    html = _render_html(page_plan, design, photo_srcs, logo_src)
+    html = _render_html(page_plan, design, photo_srcs, logo_src, footer_logo_src, manifest)
 
     output_path = _output_path(settings, manifest)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -77,6 +78,8 @@ def _render_html(
     design: DesignSystem,
     photo_srcs: dict[str, str],
     logo_src: str | None,
+    footer_logo_src: str | None = None,
+    manifest: ProjectManifest | None = None,
 ) -> str:
     """Render the Jinja2 template to an HTML string."""
     env = Environment(
@@ -89,6 +92,8 @@ def _render_html(
         ds=design,
         photo_srcs=photo_srcs,
         logo_src=logo_src,
+        footer_logo_src=footer_logo_src,
+        workshop_title=manifest.meta.title if manifest else "",
     )
 
 
@@ -140,6 +145,21 @@ def _resolve_photo_path(
         if candidate.exists():
             return candidate
 
+    return None
+
+
+def _find_assets_logo(settings: Settings) -> str | None:
+    """Return a ``file://`` URI for the first logo found in the assets directory.
+
+    Prefers SVG over raster formats for crisp scaling.
+    """
+    for ext in ("*.svg", "*.SVG", "*.png", "*.PNG", "*.jpg", "*.JPG"):
+        matches = [
+            p for p in settings.assets_dir.glob(ext)
+            if not p.name.endswith(":Zone.Identifier")
+        ]
+        if matches:
+            return matches[0].resolve().as_uri()
     return None
 
 

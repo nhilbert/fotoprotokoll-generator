@@ -146,20 +146,53 @@
     line-height: 1.5;
   }
 
-  /* ── Logo positioning ── */
-  .logo-top-right {
-    position: absolute;
-    top: {{ ds.page.margin_top_mm }}mm;
-    right: {{ ds.page.margin_right_mm }}mm;
-    max-height: 15mm;
-    max-width: 40mm;
+  /* ── Running header (non-cover pages) ── */
+  .page-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-bottom: 2mm;
+    margin-bottom: 3mm;
+    border-bottom: 0.3mm solid {{ ds.colors.primary }};
+    flex-shrink: 0;
   }
-  .logo-top-left {
-    position: absolute;
-    top: {{ ds.page.margin_top_mm }}mm;
-    left: {{ ds.page.margin_left_mm }}mm;
-    max-height: 15mm;
-    max-width: 40mm;
+  .page-header-title {
+    font-size: {{ ds.typography.caption.size_pt }}pt;
+    color: {{ ds.colors.primary }};
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .page-header-section {
+    font-size: {{ ds.typography.caption.size_pt }}pt;
+    color: {{ ds.colors.caption }};
+  }
+
+  /* ── Footer (all pages) ── */
+  .page-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: auto;
+    padding-top: 2mm;
+    border-top: 0.3mm solid {{ ds.colors.secondary }};
+    flex-shrink: 0;
+    height: 8mm;
+  }
+  .page-footer-number {
+    font-size: {{ ds.typography.caption.size_pt }}pt;
+    color: {{ ds.colors.caption }};
+  }
+  .page-footer-logo {
+    max-height: 7mm;
+    max-width: 35mm;
+  }
+  /* Cover footer: white text on dark background */
+  .page--cover .page-footer {
+    border-top-color: rgba(255,255,255,0.3);
+  }
+  .page--cover .page-footer-number {
+    color: rgba(255,255,255,0.7);
   }
 </style>
 </head>
@@ -171,8 +204,10 @@
 {# ── COVER ── #}
 {% if p.page_type == "cover" %}
 <div class="page page--cover">
-  {% if logo_src and ds.assets.logo_position in ("top-right", "top-left") %}
+  {% if logo_src %}
   <img class="cover-logo" src="{{ logo_src }}" alt="Logo">
+  {% elif footer_logo_src %}
+  <img class="cover-logo" src="{{ footer_logo_src }}" alt="Logo">
   {% endif %}
   {% for block in p.text_blocks %}
     {% if block.role == "heading" %}
@@ -181,19 +216,35 @@
     <div class="cover-meta">{{ block.content }}</div>
     {% endif %}
   {% endfor %}
+  <div class="page-footer">
+    <span class="page-footer-number">{{ p.page_number }}</span>
+    {% if footer_logo_src %}<img class="page-footer-logo" src="{{ footer_logo_src }}" alt="Logo">{% endif %}
+  </div>
 </div>
 
 {# ── SECTION DIVIDER ── #}
 {% elif p.page_type == "section_divider" %}
 <div class="page page--section-divider">
+  <div class="page-header">
+    <span class="page-header-title">{{ workshop_title }}</span>
+  </div>
   {% for block in p.text_blocks %}
   <div class="section-divider-title">{{ block.content }}</div>
   {% endfor %}
+  <div class="page-footer">
+    <span class="page-footer-number">{{ p.page_number }}</span>
+    {% if footer_logo_src %}<img class="page-footer-logo" src="{{ footer_logo_src }}" alt="Logo">{% endif %}
+  </div>
 </div>
 
 {# ── CONTENT ── #}
 {% elif p.page_type == "content" %}
 <div class="page page--content">
+  {%- set section_title = p.text_blocks | selectattr("role", "equalto", "heading") | map(attribute="content") | first | default("") %}
+  <div class="page-header">
+    <span class="page-header-title">{{ workshop_title }}</span>
+    {% if section_title %}<span class="page-header-section">{{ section_title }}</span>{% endif %}
+  </div>
   {% for block in p.text_blocks %}
     {% if block.role == "heading" %}
     <div class="content-heading">{{ block.content }}</div>
@@ -221,6 +272,10 @@
     {% endfor %}
   </div>
   {% endif %}
+  <div class="page-footer">
+    <span class="page-footer-number">{{ p.page_number }}</span>
+    {% if footer_logo_src %}<img class="page-footer-logo" src="{{ footer_logo_src }}" alt="Logo">{% endif %}
+  </div>
 </div>
 
 {% endif %}
