@@ -34,7 +34,7 @@ class ColorPalette(BaseModel):
 
 
 class TextStyle(BaseModel):
-    font: str = "Helvetica"
+    font: str = "Liberation Sans"
     size_pt: float = 10.0
     weight: Literal["normal", "bold", "italic"] = "normal"
 

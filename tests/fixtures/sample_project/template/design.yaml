@@ -13,9 +13,9 @@ colors:
   caption: "#666666"
 
 typography:
-  heading:  { font: "Helvetica", size_pt: 20, weight: bold }
-  body:     { font: "Helvetica", size_pt: 10, weight: normal }
-  caption:  { font: "Helvetica", size_pt: 8,  weight: normal }
+  heading:  { font: "Liberation Sans", size_pt: 20, weight: bold }
+  body:     { font: "Liberation Sans", size_pt: 10, weight: normal }
+  caption:  { font: "Liberation Sans", size_pt: 8,  weight: normal }
 
 assets:
   logo: null
