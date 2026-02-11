@@ -1,5 +1,4 @@
 """Tests for Stage 5 PDF Rendering."""
-import re
 from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -10,7 +9,7 @@ from models.design import DesignSystem
 from models.enriched_photos import EnrichedPhoto, EnrichedPhotoSet
 from models.manifest import ProjectManifest, WorkshopMeta
 from models.page_plan import Page, PagePlan, PhotoSlot, TextBlock
-from pipeline.stage5_render import _output_path, _render_html, _slugify, run
+from pipeline.stage5_render import _output_path, _render_html, _resolve_photo_path, _slugify, run
 from settings import Settings
 
 
@@ -245,6 +244,50 @@ class TestRenderHtml:
 # run()  (integration — mock WeasyPrint)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# _resolve_photo_path
+# ---------------------------------------------------------------------------
+
+class TestResolvePhotoPath:
+    def test_processed_path_wins_over_manifest(self, tmp_path):
+        s = _settings(tmp_path)
+        processed = tmp_path / ".cache" / "processed" / "photo_001.jpg"
+        processed.parent.mkdir(parents=True, exist_ok=True)
+        processed.write_bytes(b"PROCESSED")
+        original = tmp_path / "fotos" / "IMG_original.jpg"
+        original.write_bytes(b"ORIGINAL")
+        manifest_paths = {"photo_001": original}
+        result = _resolve_photo_path(
+            Path(".cache/processed/photo_001.jpg"), "photo_001", manifest_paths, s
+        )
+        assert result is not None
+        assert result.read_bytes() == b"PROCESSED"
+
+    def test_falls_back_to_manifest_path_when_no_processed(self, tmp_path):
+        s = _settings(tmp_path)
+        original = tmp_path / "fotos" / "IMG_original.jpg"
+        original.write_bytes(b"ORIGINAL")
+        manifest_paths = {"photo_001": original}
+        result = _resolve_photo_path(None, "photo_001", manifest_paths, s)
+        assert result == original
+
+    def test_returns_none_when_nothing_found(self, tmp_path):
+        s = _settings(tmp_path)
+        result = _resolve_photo_path(None, "photo_999", {}, s)
+        assert result is None
+
+    def test_processed_path_missing_falls_back_to_manifest(self, tmp_path):
+        s = _settings(tmp_path)
+        original = tmp_path / "fotos" / "IMG_original.jpg"
+        original.write_bytes(b"ORIGINAL")
+        manifest_paths = {"photo_001": original}
+        # processed_path set but file doesn't exist → fall back
+        result = _resolve_photo_path(
+            Path(".cache/processed/missing.jpg"), "photo_001", manifest_paths, s
+        )
+        assert result == original
+
+
 def _mock_weasyprint():
     """Context manager: patch the module-level _weasyprint with a fake that writes %PDF."""
     mock_wp = MagicMock()
@@ -315,6 +358,53 @@ class TestRun:
             run(s, plan, photo_set, _manifest())
         assert rendered_html, "HTML should have been rendered"
         assert "photo_001.jpg" in rendered_html[0]
+
+    def test_manifest_original_used_when_no_processed_path(self, tmp_path):
+        s = _settings(tmp_path)
+        original = tmp_path / "fotos" / "IMG_workshop.jpg"
+        original.write_bytes(b"FAKEJPEG")
+        from models.manifest import AgendaSession, Photo
+        from datetime import datetime, timezone
+        _NOW = datetime(2026, 2, 9, 12, 0, tzinfo=timezone.utc)
+        photo_set = EnrichedPhotoSet(enriched_photos=[
+            EnrichedPhoto(
+                photo_id="photo_001",
+                scene_type="group",
+                description="People",
+                topic_keywords=[],
+                analysis_model="gpt-5",
+                processed_path=None,  # no processed file
+            )
+        ])
+        manifest = ProjectManifest(
+            meta=WorkshopMeta(title="Workshop"),
+            sessions=[AgendaSession(id="s1", order=1, name="S1")],
+            photos=[Photo(
+                id="photo_001",
+                filename="IMG_workshop.jpg",
+                path=Path("fotos/IMG_workshop.jpg"),
+                width=800, height=600,
+                orientation="landscape",
+                timestamp_file=_NOW,
+            )],
+            text_snippets=[],
+        )
+        plan = PagePlan(pages=[
+            Page(page_number=1, page_type="content", layout_variant="1-photo",
+                 photo_slots=[PhotoSlot(photo_id="photo_001", caption="", display_size="full-width")])
+        ])
+        rendered_html: list[str] = []
+        mock_wp = MagicMock()
+        def fake_HTML(string, base_url):
+            rendered_html.append(string)
+            inst = MagicMock()
+            inst.write_pdf.side_effect = lambda path: Path(path).write_bytes(b"%PDF")
+            return inst
+        mock_wp.HTML.side_effect = fake_HTML
+        with patch("pipeline.stage5_render._weasyprint", mock_wp):
+            run(s, plan, photo_set, manifest)
+        assert rendered_html
+        assert "IMG_workshop.jpg" in rendered_html[0]
 
     def test_output_dir_created_if_missing(self, tmp_path):
         s = _settings(tmp_path)

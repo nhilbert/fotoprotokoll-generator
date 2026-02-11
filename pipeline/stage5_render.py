@@ -46,7 +46,7 @@ def run(
     if design is None:
         design = DesignSystem.load_or_default(settings.design_yaml_path)
 
-    photo_srcs = _build_photo_srcs(photo_set, settings)
+    photo_srcs = _build_photo_srcs(photo_set, manifest, settings)
     logo_src = _resolve_logo(design, settings)
 
     html = _render_html(page_plan, design, photo_srcs, logo_src)
@@ -98,12 +98,20 @@ def _render_html(
 
 def _build_photo_srcs(
     photo_set: EnrichedPhotoSet,
+    manifest: ProjectManifest,
     settings: Settings,
 ) -> dict[str, str]:
     """Map photo_id → ``file://`` URI for the processed (or original) image."""
+    # Build a fallback map: photo_id → original path from the manifest
+    manifest_paths: dict[str, Path] = {
+        p.id: settings.project_dir / p.path
+        for p in manifest.photos
+    }
     result: dict[str, str] = {}
     for ep in photo_set.enriched_photos:
-        path = _resolve_photo_path(ep.processed_path, ep.photo_id, settings)
+        path = _resolve_photo_path(
+            ep.processed_path, ep.photo_id, manifest_paths, settings
+        )
         if path and path.exists():
             result[ep.photo_id] = path.resolve().as_uri()
     return result
@@ -112,22 +120,23 @@ def _build_photo_srcs(
 def _resolve_photo_path(
     processed_path: Path | None,
     photo_id: str,
+    manifest_paths: dict[str, Path],
     settings: Settings,
 ) -> Path | None:
     """Return the absolute Path for a photo.
 
     Priority:
-    1. ``processed_path`` (relative to project_dir) if it exists
-    2. ``fotos/<photo_id>.jpg`` fallback
+    1. ``processed_path`` (relative to project_dir) — cropped/corrected image
+    2. Manifest original path — exact filename from Stage 1 ingest
     """
     if processed_path:
         candidate = settings.project_dir / processed_path
         if candidate.exists():
             return candidate
 
-    # Fallback: look for original in fotos/ (any common extension)
-    for ext in (".jpg", ".jpeg", ".JPG", ".JPEG", ".png", ".PNG"):
-        candidate = settings.fotos_dir / f"{photo_id}{ext}"
+    # Fallback: manifest original path (has the real filename)
+    if photo_id in manifest_paths:
+        candidate = manifest_paths[photo_id]
         if candidate.exists():
             return candidate
 
@@ -162,12 +171,9 @@ def _output_path(settings: Settings, manifest: ProjectManifest) -> Path:
 
 def _slugify(text: str) -> str:
     """Convert a title to a safe ASCII filename slug."""
-    # Replace German umlauts
-    for umlaut, replacement in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"),
-                                 ("Ä", "Ae"), ("Ö", "Oe"), ("Ü", "Ue"),
-                                 ("ß", "ss")):
-        text = text.replace(umlaut, replacement)
     text = text.lower()
+    for umlaut, replacement in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        text = text.replace(umlaut, replacement)
     text = re.sub(r"[^a-z0-9]+", "_", text)
     text = text.strip("_")
     return text[:50] or "protokoll"
