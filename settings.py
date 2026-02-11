@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     # Model IDs — configure here, never hardcode in pipeline modules
     vision_model: str = "gpt-5"
+    text_model: str = "gpt-5"        # For document parsing, heading generation, etc.
     embedding_model: str = "text-embedding-3-small"
 
     project_dir: Path = Path("./data")

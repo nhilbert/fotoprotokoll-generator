@@ -11,7 +11,6 @@ from models.enriched_photos import EnrichedPhoto, EnrichedPhotoSet, PhotoAnalysi
 from models.events import PipelineEvent
 from models.manifest import AgendaSession, Photo, ProjectManifest, TextSnippet, WorkshopMeta
 from models.page_plan import Page, PagePlan, PhotoSlot, TextBlock
-from models.photo_results import PhotoResults, ProcessedPhoto
 
 
 # ---------------------------------------------------------------------------
@@ -163,48 +162,6 @@ class TestProjectManifest:
         )
         assert round_trip(m) == m
 
-
-# ---------------------------------------------------------------------------
-# ProcessedPhoto / PhotoResults
-# ---------------------------------------------------------------------------
-
-class TestPhotoResults:
-    def _make_processed(self, **kwargs):
-        defaults = dict(
-            photo_id="photo_001",
-            processed_path=Path(".cache/processed/photo_001.jpg"),  # relative path
-            is_flipchart=False,
-            crop_applied=False,
-            quality_score=0.85,
-            content_hash="abc123def456",
-        )
-        return ProcessedPhoto(**{**defaults, **kwargs})
-
-    def test_processed_path_is_relative(self):
-        p = self._make_processed()
-        assert not p.processed_path.is_absolute()
-
-    def test_quality_score_out_of_range_raises(self):
-        with pytest.raises(ValidationError):
-            self._make_processed(quality_score=1.5)
-
-    def test_duplicate_of_optional(self):
-        p = self._make_processed(duplicate_of="photo_002")
-        assert p.duplicate_of == "photo_002"
-
-    def test_by_photo_id_found(self):
-        p = self._make_processed()
-        results = PhotoResults(processed_photos=[p])
-        assert results.by_photo_id("photo_001") is p
-
-    def test_by_photo_id_not_found(self):
-        results = PhotoResults(processed_photos=[])
-        assert results.by_photo_id("missing") is None
-
-    def test_round_trip(self):
-        p = self._make_processed(is_flipchart=True, crop_applied=True)
-        results = PhotoResults(processed_photos=[p])
-        assert round_trip(results) == results
 
 
 # ---------------------------------------------------------------------------

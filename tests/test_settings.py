@@ -26,9 +26,12 @@ def test_settings_derived_paths():
     assert s.design_yaml_path == Path("/tmp/project/template/design.yaml")
 
 
-def test_settings_missing_api_key_raises():
+def test_settings_missing_api_key_raises(monkeypatch):
+    # Unset env var and point env_file at a non-existent path so real .env is not read
+    monkeypatch.delenv("FPG_OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("FPG_ENV_FILE", "/nonexistent/.env")
     with pytest.raises(ValidationError) as exc_info:
-        Settings()
+        Settings(_env_file="/nonexistent/.env")
     assert "openai_api_key" in str(exc_info.value)
 
 
