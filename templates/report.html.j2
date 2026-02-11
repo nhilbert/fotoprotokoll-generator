@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<style>
+  /* ── Reset ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* ── Page setup ── */
+  @page {
+    size: {{ ds.page.width_mm }}mm {{ ds.page.height_mm }}mm;
+    margin: {{ ds.page.margin_top_mm }}mm
+            {{ ds.page.margin_right_mm }}mm
+            {{ ds.page.margin_bottom_mm }}mm
+            {{ ds.page.margin_left_mm }}mm;
+  }
+
+  body {
+    font-family: {{ ds.typography.body.font }}, Helvetica, Arial, sans-serif;
+    font-size: {{ ds.typography.body.size_pt }}pt;
+    color: {{ ds.colors.text }};
+  }
+
+  /* ── Page container ── */
+  .page {
+    width: {{ ds.page.content_width_mm }}mm;
+    min-height: {{ ds.page.content_height_mm }}mm;
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+  }
+  .page:last-child { page-break-after: avoid; }
+
+  /* ── Cover ── */
+  .page--cover {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    background-color: {{ ds.colors.primary }};
+    color: #ffffff;
+    padding: 10mm;
+  }
+  .cover-logo {
+    max-height: 25mm;
+    max-width: 60mm;
+    margin-bottom: 8mm;
+  }
+  .cover-title {
+    font-size: {{ ds.typography.heading.size_pt }}pt;
+    font-weight: bold;
+    margin-bottom: 4mm;
+    line-height: 1.2;
+  }
+  .cover-meta {
+    font-size: {{ ds.typography.body.size_pt }}pt;
+    opacity: 0.85;
+    margin-top: 2mm;
+  }
+
+  /* ── Section divider ── */
+  .page--section-divider {
+    justify-content: center;
+    align-items: flex-start;
+    padding: 8mm 0;
+    border-top: 1.5mm solid {{ ds.colors.primary }};
+  }
+  .section-divider-title {
+    font-size: {{ ds.typography.heading.size_pt }}pt;
+    font-weight: bold;
+    color: {{ ds.colors.primary }};
+  }
+
+  /* ── Content page ── */
+  .page--content {
+    gap: 4mm;
+  }
+  .content-heading {
+    font-size: {{ ds.typography.heading.size_pt }}pt;
+    font-weight: bold;
+    color: {{ ds.colors.primary }};
+    margin-bottom: 2mm;
+    line-height: 1.2;
+  }
+
+  /* ── Photo grid ── */
+  .photo-grid {
+    display: flex;
+    gap: 3mm;
+    flex: 1;
+    align-items: flex-start;
+  }
+  .photo-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 1mm;
+  }
+  /* Layout variants */
+  .photo-cell--full-width {
+    width: 100%;
+  }
+  .photo-cell--half-width {
+    width: calc(50% - 1.5mm);
+  }
+  .photo-cell--portrait-pair {
+    width: 60%;
+    margin: 0 auto;
+  }
+  /* Single portrait — center in grid */
+  .photo-grid--single-portrait {
+    justify-content: center;
+  }
+
+  .photo-img {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: contain;
+  }
+  .photo-caption {
+    font-size: {{ ds.typography.caption.size_pt }}pt;
+    color: {{ ds.colors.caption }};
+    line-height: 1.3;
+  }
+
+  /* ── Text-only content ── */
+  .text-only-body {
+    font-size: {{ ds.typography.body.size_pt }}pt;
+    color: {{ ds.colors.text }};
+    line-height: 1.5;
+  }
+
+  /* ── Logo positioning ── */
+  .logo-top-right {
+    position: absolute;
+    top: {{ ds.page.margin_top_mm }}mm;
+    right: {{ ds.page.margin_right_mm }}mm;
+    max-height: 15mm;
+    max-width: 40mm;
+  }
+  .logo-top-left {
+    position: absolute;
+    top: {{ ds.page.margin_top_mm }}mm;
+    left: {{ ds.page.margin_left_mm }}mm;
+    max-height: 15mm;
+    max-width: 40mm;
+  }
+</style>
+</head>
+<body>
+
+{% for page in pages %}
+{% set p = page %}
+
+{# ── COVER ── #}
+{% if p.page_type == "cover" %}
+<div class="page page--cover">
+  {% if logo_src and ds.assets.logo_position in ("top-right", "top-left") %}
+  <img class="cover-logo" src="{{ logo_src }}" alt="Logo">
+  {% endif %}
+  {% for block in p.text_blocks %}
+    {% if block.role == "heading" %}
+    <div class="cover-title">{{ block.content }}</div>
+    {% else %}
+    <div class="cover-meta">{{ block.content }}</div>
+    {% endif %}
+  {% endfor %}
+</div>
+
+{# ── SECTION DIVIDER ── #}
+{% elif p.page_type == "section_divider" %}
+<div class="page page--section-divider">
+  {% for block in p.text_blocks %}
+  <div class="section-divider-title">{{ block.content }}</div>
+  {% endfor %}
+</div>
+
+{# ── CONTENT ── #}
+{% elif p.page_type == "content" %}
+<div class="page page--content">
+  {% for block in p.text_blocks %}
+    {% if block.role == "heading" %}
+    <div class="content-heading">{{ block.content }}</div>
+    {% else %}
+    <div class="text-only-body">{{ block.content }}</div>
+    {% endif %}
+  {% endfor %}
+
+  {% if p.layout_variant == "text-only" %}
+    {# heading already rendered above, nothing more to add #}
+  {% else %}
+  {% set is_single_portrait = (p.photo_slots | length == 1 and p.photo_slots[0].display_size == "portrait-pair") %}
+  <div class="photo-grid{% if is_single_portrait %} photo-grid--single-portrait{% endif %}">
+    {% for slot in p.photo_slots %}
+    {% set src = photo_srcs.get(slot.photo_id, "") %}
+    <div class="photo-cell photo-cell--{{ slot.display_size }}">
+      {% if src %}
+      <img class="photo-img" src="{{ src }}" alt="{{ slot.caption }}">
+      {% endif %}
+      {% if slot.caption %}
+      <div class="photo-caption">{{ slot.caption }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+{% endif %}
+{% endfor %}
+
+</body>
+</html>
