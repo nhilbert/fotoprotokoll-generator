@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -21,14 +21,33 @@ class AgendaSession(BaseModel):
 
 
 class Photo(BaseModel):
+    """Represents a raw photo as inventoried during Stage 1.
+
+    Paths are stored **relative to `settings.project_dir`** (e.g. `fotos/IMG_001.jpg`).
+    Resolve to absolute at runtime with: `settings.project_dir / photo.path`
+
+    All datetimes are stored as UTC-aware. Naive datetimes supplied at construction
+    (e.g. from os.stat() or EXIF parsing) are automatically treated as UTC.
+    """
+
     id: str
     filename: str
-    path: Path
+    path: Path  # relative to project_dir — e.g. fotos/IMG_001.jpg
     timestamp_exif: datetime | None = None
     timestamp_file: datetime
     width: int
     height: int
     orientation: Literal["landscape", "portrait", "square"]
+
+    @field_validator("timestamp_exif", "timestamp_file", mode="before")
+    @classmethod
+    def ensure_utc(cls, v: datetime | str | None) -> datetime | str | None:
+        # During JSON deserialization Pydantic passes a string; let Pydantic parse
+        # it first, then the after-validator below attaches UTC if needed.
+        # During direct construction v is already a datetime object.
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
 
     @field_validator("width", "height")
     @classmethod
@@ -44,6 +63,11 @@ class Photo(BaseModel):
 
 
 class TextSnippet(BaseModel):
+    """A workshop-specific text file read from `data/text/`.
+
+    Not to be confused with template content — these are per-workshop notes.
+    """
+
     id: str
     filename: str
     content: str

@@ -7,6 +7,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     openai_api_key: str
 
+    # Model IDs — configure here, never hardcode in pipeline modules
+    vision_model: str = "gpt-5"
+    embedding_model: str = "text-embedding-3-small"
+
     project_dir: Path = Path("./data")
     match_confidence_threshold: float = 0.65
     temporal_weight: float = 0.6

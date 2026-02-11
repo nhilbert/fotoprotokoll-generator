@@ -12,6 +12,8 @@ def test_settings_loads_with_required_fields():
     assert s.project_dir == Path("./data")
     assert s.language == "de"
     assert s.max_photos_per_page == 2
+    assert s.vision_model == "gpt-5"
+    assert s.embedding_model == "text-embedding-3-small"
 
 
 def test_settings_derived_paths():

@@ -4,8 +4,14 @@ from pydantic import BaseModel, Field
 
 
 class ProcessedPhoto(BaseModel):
+    """Stage 2 output for a single photo.
+
+    `processed_path` is relative to `settings.project_dir`
+    (e.g. `.cache/processed/abc123.jpg`).
+    """
+
     photo_id: str
-    processed_path: Path
+    processed_path: Path  # relative to project_dir
     is_flipchart: bool
     crop_applied: bool
     quality_score: float = Field(ge=0.0, le=1.0)
