@@ -183,11 +183,18 @@ class TestTokenize:
     def test_lowercases(self):
         assert "workshop" in _tokenize("Workshop")
 
-    def test_filters_short_words(self):
-        tokens = _tokenize("in an Workshop")
-        assert "in" not in tokens
-        assert "an" not in tokens
+    def test_filters_single_chars(self):
+        tokens = _tokenize("a b Workshop")
+        assert "a" not in tokens
+        assert "b" not in tokens
         assert "workshop" in tokens
+
+    def test_keeps_two_char_abbreviations(self):
+        # German workshop abbreviations like OGS, KL, SL are meaningful
+        tokens = _tokenize("KL und OGS arbeiten zusammen")
+        assert "kl" in tokens
+        assert "og" not in tokens  # OGS → "ogs" (3 chars, kept), "og" not a word
+        assert "ogs" in tokens
 
     def test_handles_empty(self):
         assert _tokenize("") == set()

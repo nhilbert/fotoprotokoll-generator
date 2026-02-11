@@ -136,6 +136,8 @@ def _temporal_score(
     if ts is None:
         return 0.5
 
+    # Strip tzinfo: datetime.time objects are always naive (no tz support),
+    # and session start/end times are also naive — comparison requires both be naive.
     photo_time = ts.time().replace(tzinfo=None)
 
     # Check if any session has time data at all
@@ -232,8 +234,12 @@ def _semantic_score(
 
 
 def _tokenize(text: str) -> set[str]:
-    """Lowercase word tokens, length >= 3, stripped of punctuation."""
-    words = re.findall(r'\b[a-zäöüßA-ZÄÖÜ]{3,}\b', text.lower())
+    """Lowercase word tokens, length >= 2, stripped of punctuation.
+
+    Minimum length 2 preserves meaningful German abbreviations common in
+    workshop documentation (OGS, KL, SL, TS, etc.).
+    """
+    words = re.findall(r'\b[a-zäöüßA-ZÄÖÜ]{2,}\b', text.lower())
     return set(words)
 
 
@@ -252,7 +258,11 @@ def _find_text_snippet(
     session: AgendaSession,
     text_snippets: list[TextSnippet],
 ) -> str | None:
-    """For MVP: assign the first text snippet to the first session only."""
+    """Assign a text snippet to a session.
+
+    MVP stub: assigns the first snippet to the first session only.
+    Next sprint: match snippets to sessions by keyword overlap.
+    """
     if session.order == 1 and text_snippets:
         return text_snippets[0].id
     return None
