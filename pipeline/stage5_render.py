@@ -60,10 +60,15 @@ def run(
             "WeasyPrint native libraries (GTK/Pango) are not available. "
             "Follow https://doc.courtbouillon.org/weasyprint/stable/first_steps.html"
         )
+    font_config = _weasyprint.text.fonts.FontConfiguration()
+    font_css = _weasyprint.CSS(
+        string=_build_font_face_css(design.typography.body.font),
+        font_config=font_config,
+    )
     _weasyprint.HTML(
         string=html,
         base_url=str(settings.project_dir.resolve()),
-    ).write_pdf(str(output_path))
+    ).write_pdf(str(output_path), stylesheets=[font_css], font_config=font_config)
 
     logger.info("Stage 5 complete → %s", output_path)
     return output_path
@@ -95,6 +100,86 @@ def _render_html(
         footer_logo_src=footer_logo_src,
         workshop_title=manifest.meta.title if manifest else "",
     )
+
+
+# ---------------------------------------------------------------------------
+# Font embedding
+# ---------------------------------------------------------------------------
+
+# Standard directories where TTF/OTF fonts live on Linux/macOS
+_FONT_SEARCH_DIRS = [
+    Path("/usr/share/fonts"),
+    Path("/usr/local/share/fonts"),
+    Path.home() / ".local/share/fonts",
+    Path.home() / ".fonts",
+]
+
+# Filename fragment → (CSS font-weight, CSS font-style)
+_FONT_STYLE_MAP = {
+    "bolditalic": ("bold", "italic"),
+    "bold":       ("bold", "normal"),
+    "italic":     ("normal", "italic"),
+    "oblique":    ("normal", "oblique"),
+    "regular":    ("normal", "normal"),
+    "book":       ("normal", "normal"),
+}
+
+
+def _find_font_files(font_name: str) -> list[tuple[Path, str, str]]:
+    """Scan font directories for TTF/OTF files matching ``font_name``.
+
+    Returns a list of (path, css_weight, css_style) tuples.
+    """
+    slug = font_name.replace(" ", "").lower()  # e.g. "DejaVuSans"
+    results: list[tuple[Path, str, str]] = []
+    for base in _FONT_SEARCH_DIRS:
+        if not base.exists():
+            continue
+        for ext in ("*.ttf", "*.TTF", "*.otf", "*.OTF"):
+            for path in base.rglob(ext):
+                # Normalise stem for matching but keep original for suffix extraction
+                stem_normalised = path.stem.lower()
+                slug_hyphenated = font_name.lower().replace(" ", "-")  # "dejavu-sans"
+                slug_nohyphen = font_name.lower().replace(" ", "")     # "dejavusans"
+                # Accept "DejaVu-Sans-Bold" and "DejaVuSans-Bold" but not "DejaVuSansMono"
+                if stem_normalised.startswith(slug_hyphenated + "-") or stem_normalised == slug_hyphenated:
+                    suffix = stem_normalised[len(slug_hyphenated):].lstrip("-")
+                elif stem_normalised.startswith(slug_nohyphen + "-") or stem_normalised == slug_nohyphen:
+                    suffix = stem_normalised[len(slug_nohyphen):].lstrip("-")
+                else:
+                    continue
+                weight, style = "normal", "normal"
+                for fragment, (w, s) in _FONT_STYLE_MAP.items():
+                    if fragment in suffix:
+                        weight, style = w, s
+                        break
+                results.append((path, weight, style))
+    return results
+
+
+def _build_font_face_css(font_name: str) -> str:
+    """Return ``@font-face`` CSS for all variants of ``font_name`` found on disk.
+
+    Uses explicit ``file://`` URIs so WeasyPrint embeds the font directly
+    rather than relying on Pango's font lookup (which may skip embedding).
+    Falls back to an empty string if no font files are found.
+    """
+    font_files = _find_font_files(font_name)
+    if not font_files:
+        logger.warning("No font files found for '%s' — text may not embed correctly", font_name)
+        return ""
+    rules = []
+    for path, weight, style in font_files:
+        rules.append(
+            f'@font-face {{\n'
+            f'  font-family: "{font_name}";\n'
+            f'  src: url({path.as_uri()}) format("truetype");\n'
+            f'  font-weight: {weight};\n'
+            f'  font-style: {style};\n'
+            f'}}'
+        )
+    logger.debug("Font-face rules for '%s': %d variants", font_name, len(rules))
+    return "\n".join(rules)
 
 
 # ---------------------------------------------------------------------------

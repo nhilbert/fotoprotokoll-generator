@@ -310,7 +310,7 @@ def _mock_weasyprint():
     mock_wp = MagicMock()
     mock_html_instance = MagicMock()
     mock_wp.HTML.return_value = mock_html_instance
-    mock_html_instance.write_pdf.side_effect = lambda path: Path(path).write_bytes(b"%PDF")
+    mock_html_instance.write_pdf.side_effect = lambda path, **kw: Path(path).write_bytes(b"%PDF")
     return patch("pipeline.stage5_render._weasyprint", mock_wp)
 
 
@@ -368,7 +368,7 @@ class TestRun:
         def fake_HTML(string, base_url):
             rendered_html.append(string)
             inst = MagicMock()
-            inst.write_pdf.side_effect = lambda path: Path(path).write_bytes(b"%PDF")
+            inst.write_pdf.side_effect = lambda path, **kw: Path(path).write_bytes(b"%PDF")
             return inst
         mock_wp.HTML.side_effect = fake_HTML
         with patch("pipeline.stage5_render._weasyprint", mock_wp):
@@ -415,7 +415,7 @@ class TestRun:
         def fake_HTML(string, base_url):
             rendered_html.append(string)
             inst = MagicMock()
-            inst.write_pdf.side_effect = lambda path: Path(path).write_bytes(b"%PDF")
+            inst.write_pdf.side_effect = lambda path, **kw: Path(path).write_bytes(b"%PDF")
             return inst
         mock_wp.HTML.side_effect = fake_HTML
         with patch("pipeline.stage5_render._weasyprint", mock_wp):
