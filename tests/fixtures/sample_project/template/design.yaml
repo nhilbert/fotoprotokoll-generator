@@ -1,0 +1,22 @@
+page:
+  width_mm: 210
+  height_mm: 297
+  margin_top_mm: 20
+  margin_bottom_mm: 20
+  margin_left_mm: 20
+  margin_right_mm: 20
+
+colors:
+  primary: "#1A3A5C"
+  secondary: "#F4F7FA"
+  text: "#1A1A1A"
+  caption: "#666666"
+
+typography:
+  heading:  { font: "Helvetica", size_pt: 20, weight: bold }
+  body:     { font: "Helvetica", size_pt: 10, weight: normal }
+  caption:  { font: "Helvetica", size_pt: 8,  weight: normal }
+
+assets:
+  logo: null
+  logo_position: top-right
