@@ -20,12 +20,24 @@ Reads:  data/.cache/manifest.json        (ProjectManifest — for cover metadata
 Writes: data/.cache/page_plan.json       (PagePlan)
 """
 import logging
+from datetime import date
 
 from models.content_plan import ContentItem, ContentPlan
 from models.enriched_photos import EnrichedPhoto, EnrichedPhotoSet
-from models.manifest import ProjectManifest
+from models.manifest import Photo, ProjectManifest
 from models.page_plan import Page, PagePlan, PhotoSlot, TextBlock
 from settings import Settings
+
+# German month names — avoids locale dependency and %-d Linux-only format
+_DE_MONTHS = [
+    "", "Januar", "Februar", "März", "April", "Mai", "Juni",
+    "Juli", "August", "September", "Oktober", "November", "Dezember",
+]
+
+
+def _format_date_de(d: date) -> str:
+    """Format a date as '9. Februar 2026' (German, no leading zero)."""
+    return f"{d.day}. {_DE_MONTHS[d.month]} {d.year}"
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +53,8 @@ def run(
     Returns the completed PagePlan.
     """
     enriched_map = {e.photo_id: e for e in photo_set.enriched_photos}
+    # Orientation from manifest (computed from EXIF in Stage 1, always authoritative)
+    orientation_map = {p.id: p.orientation for p in manifest.photos}
     pages: list[Page] = []
     page_number = 1
 
@@ -59,6 +73,7 @@ def run(
             start_page=page_number,
             item=item,
             enriched_map=enriched_map,
+            orientation_map=orientation_map,
             max_per_page=settings.max_photos_per_page,
         )
         pages.extend(content_pages)
@@ -88,7 +103,7 @@ def _make_cover(page_number: int, manifest: ProjectManifest) -> Page:
     ]
     if meta.workshop_date:
         blocks.append(TextBlock(
-            content=meta.workshop_date.strftime("%-d. %B %Y"),
+            content=_format_date_de(meta.workshop_date),
             role="body",
             style_ref="body",
         ))
@@ -127,6 +142,7 @@ def _make_content_pages(
     start_page: int,
     item: ContentItem,
     enriched_map: dict[str, EnrichedPhoto],
+    orientation_map: dict[str, str],
     max_per_page: int,
 ) -> list[Page]:
     """Distribute the item's photos across content pages.
@@ -165,7 +181,10 @@ def _make_content_pages(
                 TextBlock(content=item.heading, role="heading", style_ref="heading")
             )
 
-        slots = [_make_photo_slot(pid, len(batch), enriched_map) for pid in batch]
+        slots = [
+            _make_photo_slot(pid, len(batch), enriched_map, orientation_map)
+            for pid in batch
+        ]
         variant = _pick_layout_variant(slots)
 
         pages.append(Page(
@@ -185,10 +204,11 @@ def _make_photo_slot(
     photo_id: str,
     batch_size: int,
     enriched_map: dict[str, EnrichedPhoto],
+    orientation_map: dict[str, str],
 ) -> PhotoSlot:
     enriched = enriched_map.get(photo_id)
     caption = enriched.description if enriched else ""
-    orientation = _photo_orientation(photo_id, enriched_map)
+    orientation = _photo_orientation(photo_id, enriched_map, orientation_map)
 
     if batch_size == 1:
         display_size = "full-width" if orientation == "landscape" else "portrait-pair"
@@ -199,15 +219,29 @@ def _make_photo_slot(
     return PhotoSlot(photo_id=photo_id, caption=caption, display_size=display_size)
 
 
-def _photo_orientation(photo_id: str, enriched_map: dict[str, EnrichedPhoto]) -> str:
-    """Return 'portrait' or 'landscape'. Defaults to landscape if unknown."""
-    # Orientation is not stored in EnrichedPhoto — we use the crop_box aspect ratio
-    # as a proxy: if crop_box height > width → portrait, else landscape.
+def _photo_orientation(
+    photo_id: str,
+    enriched_map: dict[str, EnrichedPhoto],
+    orientation_map: dict[str, str],
+) -> str:
+    """Return 'portrait' or 'landscape' for a photo.
+
+    Priority:
+    1. manifest orientation_map — computed from EXIF in Stage 1, always authoritative
+    2. crop_box aspect ratio — fallback for photos not in the manifest
+    3. 'landscape' — safe default
+    """
+    # Primary: manifest orientation (covers all scene types, EXIF-corrected)
+    if photo_id in orientation_map:
+        return orientation_map[photo_id]
+
+    # Fallback: crop_box aspect ratio (flipchart photos that may not be in manifest)
     enriched = enriched_map.get(photo_id)
     if enriched and enriched.crop_box:
         cb = enriched.crop_box
         if (cb.y_max - cb.y_min) > (cb.x_max - cb.x_min):
             return "portrait"
+
     return "landscape"
 
 

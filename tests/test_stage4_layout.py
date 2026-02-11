@@ -4,12 +4,16 @@ from pathlib import Path
 
 import pytest
 
+from datetime import datetime, timezone
+
 from models.content_plan import ContentItem, ContentPlan
 from models.enriched_photos import CropBox, EnrichedPhoto, EnrichedPhotoSet
-from models.manifest import AgendaSession, ProjectManifest, WorkshopMeta
+from models.manifest import AgendaSession, Photo, ProjectManifest, WorkshopMeta
 from models.page_plan import Page, PagePlan
-from pipeline.stage4_layout import run
+from pipeline.stage4_layout import _format_date_de, run
 from settings import Settings
+
+_NOW = datetime(2026, 2, 9, 12, 0, tzinfo=timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -32,6 +36,28 @@ def _manifest(title="Workshop", workshop_date=None, location=None) -> ProjectMan
         meta=WorkshopMeta(title=title, workshop_date=workshop_date, location=location),
         sessions=[AgendaSession(id="session_001", order=1, name=title)],
         photos=[],
+        text_snippets=[],
+    )
+
+
+def _manifest_with_photos(photo_orientations: dict[str, str]) -> ProjectManifest:
+    """Build a manifest containing Photo entries with given orientations."""
+    photos = [
+        Photo(
+            id=pid,
+            filename=f"{pid}.jpg",
+            path=Path(f"fotos/{pid}.jpg"),
+            width=800 if orientation == "landscape" else 600,
+            height=600 if orientation == "landscape" else 800,
+            orientation=orientation,
+            timestamp_file=_NOW,
+        )
+        for pid, orientation in photo_orientations.items()
+    ]
+    return ProjectManifest(
+        meta=WorkshopMeta(title="Workshop"),
+        sessions=[AgendaSession(id="session_001", order=1, name="Workshop")],
+        photos=photos,
         text_snippets=[],
     )
 
@@ -235,22 +261,31 @@ class TestContentPages:
 class TestLayoutVariants:
     def test_single_landscape_is_1photo_fullwidth(self, tmp_path):
         s = _settings(tmp_path)
-        # Landscape crop_box: width > height
-        cb = CropBox(x_min=0.1, y_min=0.2, x_max=0.9, y_max=0.8)
+        manifest = _manifest_with_photos({"photo_001": "landscape"})
         item = _item(photo_ids=["photo_001"])
-        plan = run(s, _manifest(), _plan([item]), _photo_set([_enriched("photo_001", crop_box=cb)]))
+        plan = run(s, manifest, _plan([item]), _photo_set([_enriched("photo_001")]))
         content = [p for p in plan.pages if p.page_type == "content"][0]
         assert content.layout_variant == "1-photo"
         assert content.photo_slots[0].display_size == "full-width"
 
     def test_single_portrait_is_1photo_portrait_pair(self, tmp_path):
         s = _settings(tmp_path)
-        # Portrait crop_box: height > width
-        cb = CropBox(x_min=0.2, y_min=0.1, x_max=0.8, y_max=0.9)
+        manifest = _manifest_with_photos({"photo_001": "portrait"})
         item = _item(photo_ids=["photo_001"])
-        plan = run(s, _manifest(), _plan([item]), _photo_set([_enriched("photo_001", crop_box=cb)]))
+        plan = run(s, manifest, _plan([item]), _photo_set([_enriched("photo_001")]))
         content = [p for p in plan.pages if p.page_type == "content"][0]
         assert content.layout_variant == "1-photo"
+        assert content.photo_slots[0].display_size == "portrait-pair"
+
+    def test_manifest_orientation_takes_priority_over_crop_box(self, tmp_path):
+        # Photo is portrait in manifest, but crop_box says landscape — manifest wins
+        s = _settings(tmp_path)
+        manifest = _manifest_with_photos({"photo_001": "portrait"})
+        landscape_cb = CropBox(x_min=0.1, y_min=0.2, x_max=0.9, y_max=0.8)
+        item = _item(photo_ids=["photo_001"])
+        plan = run(s, manifest, _plan([item]),
+                   _photo_set([_enriched("photo_001", crop_box=landscape_cb)]))
+        content = [p for p in plan.pages if p.page_type == "content"][0]
         assert content.photo_slots[0].display_size == "portrait-pair"
 
     def test_two_photos_is_2photo(self, tmp_path):
@@ -260,6 +295,35 @@ class TestLayoutVariants:
         plan = run(s, _manifest(), _plan([item]), _photo_set(enriched))
         content = [p for p in plan.pages if p.page_type == "content"][0]
         assert content.layout_variant == "2-photo"
+
+
+# ---------------------------------------------------------------------------
+# Date formatting
+# ---------------------------------------------------------------------------
+
+class TestDateFormatting:
+    def test_german_month_name(self):
+        assert _format_date_de(date(2026, 2, 9)) == "9. Februar 2026"
+
+    def test_no_leading_zero_on_day(self):
+        assert _format_date_de(date(2026, 1, 3)).startswith("3.")
+
+    def test_all_months_in_german(self):
+        expected = [
+            "Januar", "Februar", "März", "April", "Mai", "Juni",
+            "Juli", "August", "September", "Oktober", "November", "Dezember",
+        ]
+        for month_num, name in enumerate(expected, start=1):
+            d = date(2026, month_num, 1)
+            assert name in _format_date_de(d)
+
+    def test_cover_date_uses_german_month(self, tmp_path):
+        s = _settings(tmp_path)
+        manifest = _manifest(workshop_date=date(2026, 2, 9))
+        plan = run(s, manifest, _plan([]), _photo_set([]))
+        cover_text = " ".join(b.content for b in plan.pages[0].text_blocks)
+        assert "Februar" in cover_text
+        assert "February" not in cover_text
 
 
 # ---------------------------------------------------------------------------
